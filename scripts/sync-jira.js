@@ -111,6 +111,97 @@ function shortDate(isoStr) {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
+// ── Gantt builder ─────────────────────────────────────────────────────────────
+
+const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+/**
+ * Builds the gantt section from live Jira dates.
+ *
+ * Layout: one initiative header row (spanning its earliest→latest epic),
+ * followed by indented sub-rows for each epic in that initiative.
+ *
+ * Date sourcing priority for each epic:
+ *   startDate  → epic's startdate / customfield_10015 from Jira
+ *   targetDate → epic's duedate from Jira
+ *   fallback   → derived from sibling epics or initiative bounds
+ *
+ * Falls back to manual.gantt when no epics have any dates at all.
+ */
+function buildGantt(initiatives, epics, jiraInitiatives, manual) {
+  const year       = new Date().getFullYear();
+  const yearStr    = String(year);
+  const fallbackS  = `${yearStr}-01-01`;
+  const fallbackE  = `${yearStr}-12-31`;
+
+  // Check whether Jira gave us any real dates to work with
+  const hasDates = epics.some(e => e.startDate || e.targetDate);
+  if (!hasDates) {
+    console.log('  ℹ  No start/end dates found on epics — using manual gantt');
+    return manual.gantt || { startMonth: `${yearStr}-01`, months: MONTH_NAMES, rows: [] };
+  }
+
+  const rows = [];
+
+  initiatives.forEach(init => {
+    const myEpics = epics.filter(e => init.epicIds.includes(e.id));
+    if (myEpics.length === 0) return;
+
+    // Collect all known dates across this initiative's epics
+    const allStarts = myEpics.map(e => e.startDate).filter(Boolean).sort();
+    const allEnds   = myEpics.map(e => e.targetDate).filter(Boolean).sort();
+
+    // Initiative's own Jira dates (if it exists as an issue type)
+    const jiraInit   = jiraInitiatives.find(i => i.key === init.id);
+    const initStart  = isoDate(jiraInit?.fields?.startdate || jiraInit?.fields?.customfield_10015);
+    const initEnd    = isoDate(jiraInit?.fields?.duedate);
+
+    const rowStart = initStart || allStarts[0]              || fallbackS;
+    const rowEnd   = initEnd   || allEnds[allEnds.length-1] || fallbackE;
+
+    // Initiative header row
+    rows.push({ label: init.name, start: rowStart, end: rowEnd, status: init.status });
+
+    // Epic sub-rows — fill in missing dates from siblings
+    const siblingStart = allStarts[0]              || rowStart;
+    const siblingEnd   = allEnds[allEnds.length-1] || rowEnd;
+
+    myEpics.forEach(epic => {
+      rows.push({
+        label:  `  › ${epic.name}`,
+        start:  epic.startDate  || siblingStart,
+        end:    epic.targetDate || siblingEnd,
+        status: epic.status,
+      });
+    });
+  });
+
+  // Determine visible month range (cover all row dates, minimum full current year)
+  const allDates = rows.flatMap(r => [r.start, r.end]).filter(Boolean).sort();
+  const minDate  = allDates[0]                    || fallbackS;
+  const maxDate  = allDates[allDates.length - 1]  || fallbackE;
+
+  const startYear  = parseInt(minDate.slice(0, 4), 10);
+  const endYear    = parseInt(maxDate.slice(0, 4), 10);
+  const startMonth = parseInt(minDate.slice(5, 7), 10) - 1; // 0-based
+  const endMonth   = parseInt(maxDate.slice(5, 7), 10) - 1;
+
+  // Build the months array spanning min→max (capped at 24 months for readability)
+  const months = [];
+  let y = startYear, m = startMonth;
+  while ((y < endYear || (y === endYear && m <= endMonth)) && months.length < 24) {
+    months.push(MONTH_NAMES[m]);
+    m++;
+    if (m > 11) { m = 0; y++; }
+  }
+
+  return {
+    startMonth: `${startYear}-${String(startMonth + 1).padStart(2, '0')}`,
+    months,
+    rows,
+  };
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 async function main() {
@@ -125,7 +216,8 @@ async function main() {
   try {
     jiraInitiatives = await searchAll(
       `project = ${PROJECT} AND issuetype = Initiative ORDER BY created ASC`,
-      ['summary', 'status', 'assignee', 'duedate', 'description'],
+      // startdate = standard start date field; customfield_10015 = common alternate
+      ['summary', 'status', 'assignee', 'duedate', 'startdate', 'customfield_10015', 'description'],
     );
     console.log(`  ✓ ${jiraInitiatives.length} initiative(s) found`);
   } catch {
@@ -135,9 +227,10 @@ async function main() {
   // ── 3. Fetch all Epics ────────────────────────────────────────────────────
   const jiraEpics = await searchAll(
     `project = ${PROJECT} AND issuetype = Epic ORDER BY created ASC`,
+    // startdate / customfield_10015 = start date (varies by Jira instance)
     // customfield_10014 = Epic Name (classic projects)
-    // customfield_10016 = Story Points / Sprint (varies by instance)
-    ['summary', 'status', 'assignee', 'duedate', 'parent', 'customfield_10014', 'labels'],
+    ['summary', 'status', 'assignee', 'duedate', 'startdate', 'customfield_10015',
+     'parent', 'customfield_10014', 'labels'],
   );
   console.log(`  ✓ ${jiraEpics.length} epic(s) found`);
 
@@ -210,6 +303,9 @@ async function main() {
       ? parentKey
       : (issue.fields?.labels?.[0] || 'UNGROUPED');
 
+    // Start date: prefer standard field, fall back to common custom field
+    const startDate = isoDate(issue.fields?.startdate || issue.fields?.customfield_10015);
+
     return {
       id:          issue.key,
       name:        issue.fields.summary,
@@ -217,6 +313,7 @@ async function main() {
       owner:       issue.fields?.assignee?.displayName || 'Unassigned',
       status:      mapStatus(issue),
       progress,
+      startDate,
       targetDate:  isoDate(issue.fields?.duedate),
     };
   });
@@ -247,6 +344,8 @@ async function main() {
           ?.map(n => n.text || '').join('') || '';
       } catch { /* no description */ }
 
+      const startDate = isoDate(issue.fields?.startdate || issue.fields?.customfield_10015);
+
       return {
         id:        issue.key,
         name:      issue.fields.summary,
@@ -254,7 +353,7 @@ async function main() {
         status,
         progress,
         owner:     issue.fields?.assignee?.displayName || 'Unassigned',
-        startDate: null,
+        startDate,
         endDate:   isoDate(issue.fields?.duedate),
         epicIds,
       };
@@ -342,7 +441,11 @@ async function main() {
                       : atRisk  > 3 ? 'at-risk'
                       : 'on-track';
 
-  // ── 9. Assemble final payload ─────────────────────────────────────────────
+  // ── 9. Build Gantt from live Jira dates ───────────────────────────────────
+  const gantt = buildGantt(initiatives, epics, jiraInitiatives, manual);
+  console.log(`  ✓ Gantt built — ${gantt.rows.length} row(s)`);
+
+  // ── 10. Assemble final payload ────────────────────────────────────────────
   const today   = new Date().toISOString().split('T')[0];
   const payload = {
     meta: {
@@ -357,10 +460,10 @@ async function main() {
     blockers:   manual.blockers   || [],
     risks:      manual.risks      || [],
     updates,
-    gantt:      manual.gantt      || { startMonth: '2026-01', months: [], rows: [] },
+    gantt,
   };
 
-  // ── 10. Write data.js ─────────────────────────────────────────────────────
+  // ── 12. Write data.js ────────────────────────────────────────────────────
   const banner = `/* ⚡ Auto-generated by scripts/sync-jira.js on ${today}\n   Do not edit this file directly — edit data-manual.json for manual sections. */`;
   const output = `${banner}\nconst DASHBOARD_DATA = ${JSON.stringify(payload, null, 2)};\n`;
 
@@ -368,7 +471,7 @@ async function main() {
   writeFileSync(outPath, output, 'utf8');
 
   console.log(`\n✅  data.js updated`);
-  console.log(`   ${initiatives.length} initiative(s)  |  ${epics.length} epic(s)  |  ${updates.length} update(s)`);
+  console.log(`   ${initiatives.length} initiative(s)  |  ${epics.length} epic(s)  |  ${gantt.rows.length} gantt row(s)`);
   console.log(`   Overall: ${overallPct}%  |  Status: ${overallStatus}`);
 }
 

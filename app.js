@@ -266,30 +266,36 @@ function renderUpdates() {
 
 /* ── GANTT CHART ─────────────────────────────────────────── */
 function renderGantt() {
-  const { months, rows } = D.gantt;
-  const year = 2026;
+  const { months, rows, startMonth } = D.gantt;
   const totalMonths = months.length;
 
-  // today's position
-  const today = new Date();
-  const todayMonthIdx = today.getMonth(); // 0-based
-  const todayFrac = (todayMonthIdx + today.getDate() / 31) / totalMonths;
+  // Parse the gantt's start point (e.g. "2026-01" → year 2026, month index 0)
+  const [startYear, startMonthIdx] = startMonth
+    ? [parseInt(startMonth.slice(0,4),10), parseInt(startMonth.slice(5,7),10) - 1]
+    : [new Date().getFullYear(), 0];
+
+  // Convert a date string to a 0–1 fraction within the gantt's month range
+  function dateFrac(dateStr) {
+    const d = new Date(dateStr + "T00:00:00");
+    // Total months elapsed from the gantt start to this date
+    const monthsElapsed = (d.getFullYear() - startYear) * 12 + (d.getMonth() - startMonthIdx)
+                        + d.getDate() / 31;
+    return monthsElapsed / totalMonths;
+  }
+
+  // Today's position
+  const todayFrac = Math.min(1, Math.max(0, dateFrac(new Date().toISOString().slice(0,10))));
 
   const container = document.getElementById("ganttChart");
-
   let html = `<div class="gantt-container">`;
 
-  // header
+  // Month header
   html += `<div class="gantt-header">${months.map(m => `<div class="gantt-month">${m}</div>`).join("")}</div>`;
 
   rows.forEach(row => {
-    const start = new Date(row.start + "T00:00:00");
-    const end   = new Date(row.end   + "T00:00:00");
-
-    const startFrac = Math.max(0, (start.getMonth() + start.getDate()/31) / totalMonths);
-    const endFrac   = Math.min(1, (end.getMonth()   + end.getDate()/31)   / totalMonths);
-    const widthPct  = Math.max(2, (endFrac - startFrac) * 100);
-    const leftPct   = startFrac * 100;
+    const leftPct  = Math.max(0,   dateFrac(row.start) * 100);
+    const rightPct = Math.min(100, dateFrac(row.end)   * 100);
+    const widthPct = Math.max(2,   rightPct - leftPct);
 
     html += `
       <div class="gantt-row">
