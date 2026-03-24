@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WLOS Project Dashboard — RVO Health</title>
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+  <!-- HEADER -->
+  <header class="site-header">
+    <div class="header-left">
+      <div class="logo-mark">RVO</div>
+      <div class="header-titles">
+        <h1>WLOS Program Dashboard</h1>
+        <p class="header-sub">Stakeholder View &mdash; Weight Loss &amp; Obesity Solutions</p>
+      </div>
+    </div>
+    <div class="header-right">
+      <div class="health-badge" id="overallHealthBadge">
+        <span class="health-dot"></span>
+        <span class="health-label">On Track</span>
+      </div>
+      <div class="last-updated" id="lastUpdated"></div>
+    </div>
+  </header>
+
+  <!-- NAVIGATION TABS -->
+  <nav class="tab-nav">
+    <button class="tab-btn active" data-tab="overview">Overview</button>
+    <button class="tab-btn" data-tab="initiatives">Initiatives</button>
+    <button class="tab-btn" data-tab="epics">Epics</button>
+    <button class="tab-btn" data-tab="risks">Risks &amp; Blockers</button>
+    <button class="tab-btn" data-tab="timeline">Timeline</button>
+  </nav>
+
+  <main class="main-content">
+
+    <!-- ===================== TAB: OVERVIEW ===================== -->
+    <section id="tab-overview" class="tab-panel active">
+
+      <!-- KPI Cards -->
+      <div class="kpi-grid" id="kpiGrid"></div>
+
+      <!-- Two-column row: Initiative progress + Epic status donut -->
+      <div class="two-col-grid">
+        <div class="card">
+          <div class="card-header">
+            <h2>Initiative Progress</h2>
+            <span class="card-meta">Q1–Q2 2026</span>
+          </div>
+          <div class="initiative-bars" id="initiativeBarsOverview"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <h2>Epic Status Breakdown</h2>
+            <span class="card-meta">All Epics</span>
+          </div>
+          <div class="donut-wrap">
+            <canvas id="epicStatusChart"></canvas>
+            <div class="donut-legend" id="donutLegend"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Milestone Timeline strip -->
+      <div class="card">
+        <div class="card-header">
+          <h2>Upcoming Milestones</h2>
+          <span class="card-meta">Next 90 days</span>
+        </div>
+        <div class="milestone-strip" id="milestoneStrip"></div>
+      </div>
+
+    </section>
+
+    <!-- ===================== TAB: INITIATIVES ===================== -->
+    <section id="tab-initiatives" class="tab-panel">
+      <div class="initiatives-grid" id="initiativeCards"></div>
+    </section>
+
+    <!-- ===================== TAB: EPICS ===================== -->
+    <section id="tab-epics" class="tab-panel">
+      <div class="epics-filter-bar">
+        <span class="filter-label">Filter by Status:</span>
+        <button class="filter-btn active" data-filter="all">All</button>
+        <button class="filter-btn" data-filter="on-track">On Track</button>
+        <button class="filter-btn" data-filter="at-risk">At Risk</button>
+        <button class="filter-btn" data-filter="blocked">Blocked</button>
+        <button class="filter-btn" data-filter="completed">Completed</button>
+      </div>
+      <div class="epics-table-wrap">
+        <table class="epics-table" id="epicsTable">
+          <thead>
+            <tr>
+              <th>Epic</th>
+              <th>Initiative</th>
+              <th>Owner</th>
+              <th>Status</th>
+              <th>Progress</th>
+              <th>Target Date</th>
+            </tr>
+          </thead>
+          <tbody id="epicsTableBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ===================== TAB: RISKS ===================== -->
+    <section id="tab-risks" class="tab-panel">
+      <div class="two-col-grid">
+        <div class="card">
+          <div class="card-header">
+            <h2>Active Blockers</h2>
+            <span class="risk-count blocked" id="blockerCount">0</span>
+          </div>
+          <div id="blockersList"></div>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <h2>Risks &amp; Dependencies</h2>
+            <span class="risk-count at-risk" id="riskCount">0</span>
+          </div>
+          <div id="risksList"></div>
+        </div>
+      </div>
+      <div class="card" style="margin-top:1.5rem">
+        <div class="card-header">
+          <h2>Recent Updates</h2>
+          <span class="card-meta">Last 2 weeks</span>
+        </div>
+        <div class="updates-feed" id="updatesFeed"></div>
+      </div>
+    </section>
+
+    <!-- ===================== TAB: TIMELINE ===================== -->
+    <section id="tab-timeline" class="tab-panel">
+      <div class="card">
+        <div class="card-header">
+          <h2>Program Roadmap</h2>
+          <span class="card-meta">Jan – Dec 2026</span>
+        </div>
+        <div class="gantt-wrap" id="ganttChart"></div>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="site-footer">
+    <span>RVO Health &middot; WLOS Program &middot; Data reflects last Jira sync</span>
+    <span id="footerDate"></span>
+  </footer>
+
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
