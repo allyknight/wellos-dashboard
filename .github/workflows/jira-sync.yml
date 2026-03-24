@@ -1,0 +1,23 @@
+name: Jira Data Sync
+
+on:
+  schedule:
+    - cron: '0 0 * * *'  # Runs automatically every day at midnight
+  workflow_dispatch:      # This adds the "Sync Now" button
+
+jobs:
+  sync-jira:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Sync Command
+        env:
+          JIRA_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+          JIRA_USER: "your-email@example.com"
+          JIRA_DOMAIN: "your-company.atlassian.net"
+        run: |
+          echo "Starting the sync process..."
+          # This command tests your connection to Jira
+          curl -s -u $JIRA_USER:$JIRA_TOKEN "https://$JIRA_DOMAIN/rest/api/3/myself"
